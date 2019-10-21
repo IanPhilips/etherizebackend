@@ -1,14 +1,18 @@
-package etherizeBackend
+package main
 
 import (
 	"crypto/tls"
 	"encoding/json"
 	"flag"
 	"github.com/gorilla/mux"
+	"github.com/ianphilips/coinpayments-go/coinpayments"
 	"golang.org/x/crypto/acme/autocert"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
-	"runtime"
+	"strconv"
+	"strings"
 )
 
 
@@ -18,32 +22,40 @@ var logName = "Etherize.log"
 var hostName = "etherize.io"
 var sslDir = "certs"
 var config = Config{}
+var coinClient *coinpayments.Client
+var callbackIP *string
+var callbackEndpoint = "/cryptoPaymentCallback"
 
 func main() {
 
 	config.Read()
 
 	r := mux.NewRouter()
+	mode := flag.String("mode", "debug", " 'debug' or 'production' - http or https + production logging")
+	callbackIP = flag.String("ip", "xxx", " callback url for coinpayments - for debugging use ngrok")
 	flag.Parse()
+
+	log.Info().Msg( "callaback ip set to: " + *callbackIP)
 
 	registerHandlers(r)
 	r.Use(loggingMiddleware)
 
 
-	// debug mode on mac
-	if runtime.GOOS == "darwin" {
+	// debug mode
+	if *mode == "debug" {
 		runningOnLocalHost = true
-		log.Info().Msg("running on port 80")
+		log.Info().Msg("running in debug more on port 80")
 
 		if err := http.ListenAndServe(":80", r); err != nil {
 			log.Fatal().Msg(err.Error())
 		}
 
-		// production mode on linux
-	} else if runtime.GOOS == "linux" {
+		// production mode
+	} else if *mode == "production" {
 		runningOnLocalHost = false
 		runProductionServer(r)
 	}
+
 
 }
 
@@ -52,26 +64,92 @@ func registerHandlers(r *mux.Router){
 
 	// payments
 	r.HandleFunc("/cryptoPayment", getCryptoPayment)
+	r.HandleFunc(callbackEndpoint, cryptoPaymentCallback)
 	r.HandleFunc("/fiatPayment", getFiatPayment)
 	r.HandleFunc("/getOpenlawJWT", getOpenlawJWT)
 
-
 }
 
-
+// Gets a JWT from the Openlaw hosted instance using our credentials from the config.toml (not included in OS repo)
+// REST api details from https://docs.openlaw.io/api-client/#authentication
 func getOpenlawJWT(w http.ResponseWriter, r *http.Request){
-	url := "https://etherizeit.openlaw.io";
-	// You can change TEMPLATE_NAME to 'articles-of-organization' to make the code work ...
-	// Right now, both deal templates on Etherizeit instance are causing the same issue
-	openlawUser := config.Username
-	openlawPass := config.Password
-	
+	apiUrl := "https://etherizeit.openlaw.io"
+	resource := "/app/login"
+	u, _ := url.ParseRequestURI(apiUrl)
+	u.Path = resource
+	urlStr := u.String()
+
+	data := url.Values{}
+	data.Set("userId", config.Username)
+	data.Set("password", config.Password)
+
+
+	client := &http.Client{}
+	r, _ = http.NewRequest("POST", urlStr, strings.NewReader(data.Encode())) // URL-encoded payload
+	r.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+	r.Header.Add("Content-Length", strconv.Itoa(len(data.Encode())))
+
+	resp, err := client.Do(r)
+	if err!= nil {
+		respondWithError(w, resp.StatusCode, err.Error())
+		return
+	}
+
+	response := OpenlawJWT{
+		Jwt: resp.Header.Get("OPENLAW_JWT"),
+		Error:"",
+	}
+
+	respondWithJson(w,http.StatusAccepted,response)
+
 }
+
+func cryptoPaymentCallback(w http.ResponseWriter, r *http.Request) {
+
+	log.Info().Msg("callback called!")
+	PrettyPrintRequest(r)
+
+}
+
 
 
 func getCryptoPayment(w http.ResponseWriter, r *http.Request) {
 
+	coinClient = coinpayments.NewClient(config.CoinPaymentsPublic,config.CoinPaymentsPrivate, http.DefaultClient)
+
+	apiUrl := callbackIP
+	resource := callbackEndpoint
+	u, _ := url.ParseRequestURI(*apiUrl)
+	u.Path = resource
+	urlStr := u.String()
+
+	newTransaction := coinpayments.TransactionParams{
+		Amount:.01,
+		Currency1:"USD",
+		Currency2:"LTCT",
+		BuyerEmail:"iansphilips@gmail.com",
+		IPNUrl:urlStr,
+
+	}
+
+	trans, _, err := coinClient.Transactions.NewTransaction(&newTransaction)
+
+
+	if err!= nil {
+		log.Error().Msg(err.Error())
+		return
+	}
+	if trans.Error!="ok"{
+		log.Error().Msg(trans.Error)
+		return
+	}
+
+
+	log.Info().Msg("transaction created!")
+	log.Info().Msg("Status URL:   " + trans.Result.StatusUrl + "    ")
+	respondWithJson(w,http.StatusAccepted, trans)
 }
+
 
 func getFiatPayment(w http.ResponseWriter, r *http.Request) {
 
@@ -148,7 +226,19 @@ func loggingMiddleware(next http.Handler) http.Handler {
 //endregion
 
 
+// prints out a formatted webrequest
+func PrettyPrintRequest(r *http.Request) {
+	// Save a copy of this request for debugging.
+	requestDump, err := httputil.DumpRequest(r, true)
+	if err != nil {
+		log.Error().Msg(err.Error())
+		//fmt.Println(err)
+	}
 
+	log.Info().Msg(string(requestDump))
+	//fmt.Println()
+
+}
 
 // utility for http response with an error
 func respondWithError(w http.ResponseWriter, code int, msg string) {

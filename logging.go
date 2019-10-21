@@ -1,4 +1,4 @@
-package etherizeBackend
+package main
 
 import (
 zlog "github.com/rs/zerolog/log"
@@ -6,7 +6,7 @@ zlog "github.com/rs/zerolog/log"
 "os"
 )
 
-var Log = zlog.Logger
+var Log = zlog.With().Caller().Logger()
 
 
 

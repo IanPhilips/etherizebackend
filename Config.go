@@ -1,4 +1,4 @@
-package etherizeBackend
+package main
 
 import "github.com/BurntSushi/toml"
 
@@ -6,6 +6,9 @@ import "github.com/BurntSushi/toml"
 type Config struct {
 	Username string
 	Password string
+	CoinPaymentsPublic string
+	CoinPaymentsPrivate string
+	CoinPaymentsIPN string
 }
 
 // Read and parse the configuration file
