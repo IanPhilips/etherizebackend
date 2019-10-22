@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"flag"
+	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/schema"
 	"github.com/ianphilips/coinpayments-go/coinpayments"
@@ -22,13 +23,11 @@ import (
 )
 
 
-
 // SSL for HTTPS
 var hostName = "etherize.io"
 var sslDir = "certs"
 
-// coinpayments
-var coinClient *coinpayments.Client
+// CoinPayments
 var coinPaymentsCallbackResource = "/cryptoPaymentCallback"
 var coinPaymentsCallbackURL string
 
@@ -64,7 +63,7 @@ func main() {
 		runningOnLocalHost = true
 		log.Info().Msg("running in debug more on port 80")
 
-		if err := http.ListenAndServe(":80", r); err != nil {
+		if err := http.ListenAndServe(":80", handlers.CORS()(r)); err != nil {
 			log.Fatal().Msg(err.Error())
 		}
 
@@ -189,7 +188,7 @@ func generateCryptoTransaction(w http.ResponseWriter, r *http.Request) {
 	cryptoCurrency := "LTCT"
 
 	// Ask coinpayments for a crypto transaction
-	coinClient = coinpayments.NewClient(config.CoinPaymentsPublic,config.CoinPaymentsPrivate, http.DefaultClient)
+	coinClient := coinpayments.NewClient(config.CoinPaymentsPublic,config.CoinPaymentsPrivate, http.DefaultClient)
 	newTransaction := coinpayments.TransactionParams{
 		Amount:     amount,
 		Currency1:  "USD",

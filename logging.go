@@ -1,8 +1,8 @@
 package main
 
 import (
-zlog "github.com/rs/zerolog/log"
-"io"
+	zlog "github.com/rs/zerolog/log"
+	"io"
 	"net/http"
 	"os"
 )
