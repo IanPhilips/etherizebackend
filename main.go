@@ -1,12 +1,18 @@
 package main
 
 import (
+	"bytes"
+	"crypto/sha512"
 	"crypto/tls"
+	"crypto/hmac"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"github.com/gorilla/mux"
+	"github.com/gorilla/schema"
 	"github.com/ianphilips/coinpayments-go/coinpayments"
 	"golang.org/x/crypto/acme/autocert"
+	"io/ioutil"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -32,7 +38,7 @@ func main() {
 
 	r := mux.NewRouter()
 	mode := flag.String("mode", "debug", " 'debug' or 'production' - http or https + production logging")
-	callbackIP = flag.String("ip", "xxx", " callback url for coinpayments - for debugging use ngrok")
+	callbackIP = flag.String("ip", "CALLBACK IP NOT SET", " callback url for coinpayments - for debugging use ngrok")
 	flag.Parse()
 
 	log.Info().Msg( "callaback ip set to: " + *callbackIP)
@@ -107,7 +113,54 @@ func getOpenlawJWT(w http.ResponseWriter, r *http.Request){
 func cryptoPaymentCallback(w http.ResponseWriter, r *http.Request) {
 
 	log.Info().Msg("callback called!")
-	PrettyPrintRequest(r)
+	// Read the content
+	var bodyBytes []byte
+	bodyBytes, _ = ioutil.ReadAll(r.Body)
+	r.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBytes))// Use the content
+
+	err := r.ParseForm()
+	if err != nil {
+		log.Error().Msg("couldn't parse form: " + err.Error())
+	}
+
+	suppliedHmac := r.Header.Get("Hmac")
+	if suppliedHmac == ""{
+		log.Error().Msg("no HMAC signature set")
+	}
+
+	//log.Info().Msg("body: "+ bodyString)
+
+
+	mac := hmac.New(sha512.New, []byte(config.CoinPaymentsIPN))
+	mac.Write([]byte(bodyBytes))
+	sha := hex.EncodeToString(mac.Sum(nil))
+
+	//log.Info().Msg("computed sha: " + sha)
+	//log.Info().Msg("supplied sha: " + suppliedHmac)
+
+	if suppliedHmac != sha{
+		log.Info().Msg("hmacs don't match!")
+		return
+	}
+
+	transactionCallback := new(TransactionCallback)
+	decoder := schema.NewDecoder()
+
+
+	err = decoder.Decode(transactionCallback, r.Form)
+	if err != nil {
+		log.Error().Msg("couldn't decode callback: " + err.Error())
+	}
+
+	suppliedMerchantId := transactionCallback.Merchant
+	if suppliedMerchantId != config.CoinPaymentsMerchantId{
+		log.Error().Msg("merchant id doesn't match")
+		return
+	}
+
+
+	log.Info().Msg("callback successfully processed with status: " + transactionCallback.StatusText)
+	log.Info().Msg("user has successfully paid! id: " + transactionCallback.Id)
 
 }
 
@@ -127,7 +180,7 @@ func getCryptoPayment(w http.ResponseWriter, r *http.Request) {
 		Amount:.01,
 		Currency1:"USD",
 		Currency2:"LTCT",
-		BuyerEmail:"iansphilips@gmail.com",
+		BuyerEmail:config.TestEmail,
 		IPNUrl:urlStr,
 
 	}
@@ -232,11 +285,9 @@ func PrettyPrintRequest(r *http.Request) {
 	requestDump, err := httputil.DumpRequest(r, true)
 	if err != nil {
 		log.Error().Msg(err.Error())
-		//fmt.Println(err)
 	}
 
 	log.Info().Msg(string(requestDump))
-	//fmt.Println()
 
 }
 

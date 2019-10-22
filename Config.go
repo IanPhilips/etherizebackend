@@ -9,6 +9,8 @@ type Config struct {
 	CoinPaymentsPublic string
 	CoinPaymentsPrivate string
 	CoinPaymentsIPN string
+	CoinPaymentsMerchantId string
+	TestEmail string
 }
 
 // Read and parse the configuration file
