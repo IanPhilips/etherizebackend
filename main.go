@@ -175,7 +175,9 @@ func cryptoPaymentCallback(w http.ResponseWriter, r *http.Request) {
 
 
 	log.Info().Msg("callback successfully processed with status: " + transactionCallback.StatusText)
-	log.Info().Msg("user has successfully paid! id: " + transactionCallback.Id)
+	log.Info().Msg("Coinpayments update for transaction id: " + transactionCallback.Id)
+
+	// TODO: determine difference between successful payments and still pending ones
 
 }
 
