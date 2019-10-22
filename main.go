@@ -2,9 +2,9 @@ package main
 
 import (
 	"bytes"
+	"crypto/hmac"
 	"crypto/sha512"
 	"crypto/tls"
-	"crypto/hmac"
 	"encoding/hex"
 	"encoding/json"
 	"flag"
@@ -22,27 +22,39 @@ import (
 )
 
 
-var log = Log
-var runningOnLocalHost = false
-var logName = "Etherize.log"
+
+// SSL for HTTPS
 var hostName = "etherize.io"
 var sslDir = "certs"
-var config = Config{}
-var coinClient *coinpayments.Client
-var callbackIP *string
-var callbackEndpoint = "/cryptoPaymentCallback"
 
+// coinpayments
+var coinClient *coinpayments.Client
+var coinPaymentsCallbackResource = "/cryptoPaymentCallback"
+var coinPaymentsCallbackURL string
+
+// debugging
+var runningOnLocalHost = false
+
+
+// Called on start - parses CL args and starts the server
 func main() {
 
-	config.Read()
-
-	r := mux.NewRouter()
+	// Parse command line arguments
 	mode := flag.String("mode", "debug", " 'debug' or 'production' - http or https + production logging")
-	callbackIP = flag.String("ip", "CALLBACK IP NOT SET", " callback url for coinpayments - for debugging use ngrok")
+	callbackIP := flag.String("ip", "CALLBACK IP NOT SET", " callback url for coinpayments - for debugging use ngrok")
 	flag.Parse()
-
 	log.Info().Msg( "callaback ip set to: " + *callbackIP)
 
+	// generate our full url for payment callbacks
+	resource := coinPaymentsCallbackResource
+	u, _ := url.ParseRequestURI(*callbackIP)
+	u.Path = resource
+	coinPaymentsCallbackURL = u.String()
+
+
+	// setup
+	config.Read()
+	r := mux.NewRouter()
 	registerHandlers(r)
 	r.Use(loggingMiddleware)
 
@@ -66,15 +78,17 @@ func main() {
 }
 
 
+// match endpoints to functions
 func registerHandlers(r *mux.Router){
 
 	// payments
-	r.HandleFunc("/cryptoPayment", getCryptoPayment)
-	r.HandleFunc(callbackEndpoint, cryptoPaymentCallback)
+	r.HandleFunc("/generateCryptoTransaction", generateCryptoTransaction)
+	r.HandleFunc(coinPaymentsCallbackResource, cryptoPaymentCallback)
 	r.HandleFunc("/fiatPayment", getFiatPayment)
 	r.HandleFunc("/getOpenlawJWT", getOpenlawJWT)
 
 }
+
 
 // Gets a JWT from the Openlaw hosted instance using our credentials from the config.toml (not included in OS repo)
 // REST api details from https://docs.openlaw.io/api-client/#authentication
@@ -86,8 +100,8 @@ func getOpenlawJWT(w http.ResponseWriter, r *http.Request){
 	urlStr := u.String()
 
 	data := url.Values{}
-	data.Set("userId", config.Username)
-	data.Set("password", config.Password)
+	data.Set("userId", config.OpenLawUsername)
+	data.Set("password", config.OpenLawPassword)
 
 
 	client := &http.Client{}
@@ -110,48 +124,50 @@ func getOpenlawJWT(w http.ResponseWriter, r *http.Request){
 
 }
 
+
+// Called with payment updates from CoinPayments
 func cryptoPaymentCallback(w http.ResponseWriter, r *http.Request) {
 
-	log.Info().Msg("callback called!")
-	// Read the content
+	// Read the content from body
 	var bodyBytes []byte
 	bodyBytes, _ = ioutil.ReadAll(r.Body)
-	r.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBytes))// Use the content
+	// replace the content
+	r.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBytes))
 
 	err := r.ParseForm()
 	if err != nil {
 		log.Error().Msg("couldn't parse form: " + err.Error())
+		return
 	}
 
+	// get Hmac
 	suppliedHmac := r.Header.Get("Hmac")
 	if suppliedHmac == ""{
 		log.Error().Msg("no HMAC signature set")
+		return
 	}
 
-	//log.Info().Msg("body: "+ bodyString)
-
-
+	// compute our own hmac
 	mac := hmac.New(sha512.New, []byte(config.CoinPaymentsIPN))
 	mac.Write([]byte(bodyBytes))
-	sha := hex.EncodeToString(mac.Sum(nil))
+	computedHmac := hex.EncodeToString(mac.Sum(nil))
 
-	//log.Info().Msg("computed sha: " + sha)
-	//log.Info().Msg("supplied sha: " + suppliedHmac)
-
-	if suppliedHmac != sha{
+	// verify supplied hmac matches computed
+	if suppliedHmac != computedHmac {
 		log.Info().Msg("hmacs don't match!")
 		return
 	}
 
+	// decode form to callback struct
 	transactionCallback := new(TransactionCallback)
 	decoder := schema.NewDecoder()
-
-
 	err = decoder.Decode(transactionCallback, r.Form)
 	if err != nil {
 		log.Error().Msg("couldn't decode callback: " + err.Error())
+		return
 	}
 
+	// verify correct merchant id
 	suppliedMerchantId := transactionCallback.Merchant
 	if suppliedMerchantId != config.CoinPaymentsMerchantId{
 		log.Error().Msg("merchant id doesn't match")
@@ -165,26 +181,22 @@ func cryptoPaymentCallback(w http.ResponseWriter, r *http.Request) {
 }
 
 
+// Generates a crypto transaction via CoinPayments
+func generateCryptoTransaction(w http.ResponseWriter, r *http.Request) {
 
-func getCryptoPayment(w http.ResponseWriter, r *http.Request) {
+	// amount is in default USD
+	amount := .01
+	cryptoCurrency := "LTCT"
 
+	// Ask coinpayments for a crypto transaction
 	coinClient = coinpayments.NewClient(config.CoinPaymentsPublic,config.CoinPaymentsPrivate, http.DefaultClient)
-
-	apiUrl := callbackIP
-	resource := callbackEndpoint
-	u, _ := url.ParseRequestURI(*apiUrl)
-	u.Path = resource
-	urlStr := u.String()
-
 	newTransaction := coinpayments.TransactionParams{
-		Amount:.01,
-		Currency1:"USD",
-		Currency2:"LTCT",
-		BuyerEmail:config.TestEmail,
-		IPNUrl:urlStr,
-
+		Amount:     amount,
+		Currency1:  "USD",
+		Currency2:  cryptoCurrency,
+		BuyerEmail: config.TestEmail,
+		IPNUrl:     coinPaymentsCallbackURL,
 	}
-
 	trans, _, err := coinClient.Transactions.NewTransaction(&newTransaction)
 
 
@@ -192,23 +204,24 @@ func getCryptoPayment(w http.ResponseWriter, r *http.Request) {
 		log.Error().Msg(err.Error())
 		return
 	}
+
 	if trans.Error!="ok"{
 		log.Error().Msg(trans.Error)
 		return
 	}
 
-
 	log.Info().Msg("transaction created!")
-	log.Info().Msg("Status URL:   " + trans.Result.StatusUrl + "    ")
 	respondWithJson(w,http.StatusAccepted, trans)
 }
 
 
+// TODO
 func getFiatPayment(w http.ResponseWriter, r *http.Request) {
 
 }
 
 
+// TODO
 func runProductionServer( r *mux.Router){
 	//create your file with desired read/write permissions
 	f, err := os.OpenFile(logName, os.O_RDWR | os.O_CREATE | os.O_APPEND, 0666)
@@ -264,21 +277,6 @@ func runProductionServer( r *mux.Router){
 }
 
 
-
-// region: logging
-
-// logs all requests to server
-func loggingMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Do stuff here
-		log.Info().Str("Request made to",r.RequestURI).Msg(r.Method)
-		// Call the next handler, which can be another middleware in the chain, or the final handler.
-		next.ServeHTTP(w, r)
-	})
-}
-//endregion
-
-
 // prints out a formatted webrequest
 func PrettyPrintRequest(r *http.Request) {
 	// Save a copy of this request for debugging.
@@ -291,11 +289,13 @@ func PrettyPrintRequest(r *http.Request) {
 
 }
 
+
 // utility for http response with an error
 func respondWithError(w http.ResponseWriter, code int, msg string) {
 	log.Info().Msg("Responding with error: " + msg )
 	respondWithJson(w, code, map[string]string{"error": msg})
 }
+
 
 // utility for http response with json
 func respondWithJson(w http.ResponseWriter, code int, payload interface{}) {
@@ -305,4 +305,3 @@ func respondWithJson(w http.ResponseWriter, code int, payload interface{}) {
 	w.Write(response)
 }
 
-//endregion

@@ -2,6 +2,9 @@ package main
 
 import "github.com/BurntSushi/toml"
 
+
+var config = Config{}
+
 // Represents database server and credentials
 type Config struct {
 	OpenLawUsername string

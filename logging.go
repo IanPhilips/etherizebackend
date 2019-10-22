@@ -3,12 +3,22 @@ package main
 import (
 zlog "github.com/rs/zerolog/log"
 "io"
-"os"
+	"net/http"
+	"os"
 )
 
-var Log = zlog.With().Caller().Logger()
+var logName = "Etherize.log"
+var log = zlog.With().Caller().Logger()
 
-
+// logs all requests to server
+func loggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Do stuff here
+		log.Info().Str("Request made to",r.RequestURI).Msg(r.Method)
+		// Call the next handler, which can be another middleware in the chain, or the final handler.
+		next.ServeHTTP(w, r)
+	})
+}
 
 func SetupProductionLogger(f *os.File) {
 	// create multiwriter to write to std out as well as logfile
@@ -16,6 +26,6 @@ func SetupProductionLogger(f *os.File) {
 
 	//defer to close when you're done with it
 
-	Log = zlog.With().Caller().Logger().Output(mw)
+	log = zlog.With().Caller().Logger().Output(mw)
 
 }
