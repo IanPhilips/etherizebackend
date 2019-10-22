@@ -4,8 +4,8 @@ import "github.com/BurntSushi/toml"
 
 // Represents database server and credentials
 type Config struct {
-	Username string
-	Password string
+	OpenLawUsername string
+	OpenLawPassword string
 	CoinPaymentsPublic string
 	CoinPaymentsPrivate string
 	CoinPaymentsIPN string

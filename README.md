@@ -11,15 +11,15 @@ install dependencies for this project:
 
 ## Configure
 
-create a `config.toml` file and add your OpenLaw credentials:
+create a `config.toml` file and add your credentials:
 
-username = "you@email.com"  
-password = "supersecret"
+openLawUsername = "you@email.com"  
+openLawPassword = "supersecret"  
 coinPaymentsPublic = "xxx"  
 coinPaymentsPrivate = "xxx"  
 coinPaymentsIPN = "xxx"  
 coinPaymentsMerchantId = "xxx"  
-
+testEmail = "xxx"  
 
 
 
