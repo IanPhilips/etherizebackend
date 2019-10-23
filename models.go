@@ -10,7 +10,7 @@ type TransactionCallback struct{
 	Id string `schema:"txn_id"`
 	StatusText string `schema:"status_text"`
 	ReceivedConfirms int `schema:"received_confirms"`
-	Status string `schema:"status"`
+	Status int `schema:"status"`
 	ReceivedAmount float64 `schema:"received_amount"`
 	Merchant string `schema:"merchant"`
 	IpnVersion string `schema:"ipn_version"`

@@ -173,11 +173,45 @@ func cryptoPaymentCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-
+	paymentStatus := transactionCallback.Status
 	log.Info().Msg("callback successfully processed with status: " + transactionCallback.StatusText)
 	log.Info().Msg("Coinpayments update for transaction id: " + transactionCallback.Id)
 
-	// TODO: determine difference between successful payments and still pending ones
+
+
+	paymentComplete := false
+	switch paymentStatus {
+	case 0:
+		log.Info().Msg("waiting for payment")
+		break
+	case 1:
+		log.Info().Msg("coins received!")
+		break
+	case 2:
+		log.Info().Msg("coins queued for payout!")
+		paymentComplete = true
+		break
+	case -1:
+		log.Info().Msg("payment cancelled or timed out")
+		break
+	case -2:
+		log.Info().Msg("Paypal refund or reversal")
+		break
+	case 3:
+		log.Info().Msg("Paypal pending!")
+		break
+	case 100:
+		log.Info().Msg("Payment Complete!")
+		paymentComplete = true
+		break
+	}
+
+
+	if paymentComplete{
+		// TODO notify user of completed payment and that we're working on creating their entity
+		// TODO notify any other parties of completed payment other than ian (default email on coinpayments)
+	}
+
 
 }
 
@@ -185,9 +219,11 @@ func cryptoPaymentCallback(w http.ResponseWriter, r *http.Request) {
 // Generates a crypto transaction via CoinPayments
 func generateCryptoTransaction(w http.ResponseWriter, r *http.Request) {
 
+
 	// amount is in default USD
 	amount := .01
-	cryptoCurrency := "LTCT"
+	// client specifies crypto currency
+	cryptoCurrency := r.URL.Query()["crypto"][0]
 
 	// Ask coinpayments for a crypto transaction
 	coinClient := coinpayments.NewClient(config.CoinPaymentsPublic,config.CoinPaymentsPrivate, http.DefaultClient)
@@ -212,6 +248,9 @@ func generateCryptoTransaction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Info().Msg("transaction created!")
+
+	// TODO show customer where to send crypto
+
 	respondWithJson(w,http.StatusAccepted, trans)
 }
 
