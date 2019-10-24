@@ -12,6 +12,9 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/gorilla/schema"
 	"github.com/ianphilips/coinpayments-go/coinpayments"
+	"github.com/stripe/stripe-go"
+	sessionStripe "github.com/stripe/stripe-go/checkout/session"
+	"github.com/stripe/stripe-go/webhook"
 	"golang.org/x/crypto/acme/autocert"
 	"io/ioutil"
 	"net/http"
@@ -26,13 +29,14 @@ import (
 // SSL for HTTPS
 var hostName = "etherize.io"
 var sslDir = "certs"
+var currentIP url.URL
+
 
 // CoinPayments
 var coinPaymentsCallbackResource = "/cryptoPaymentCallback"
-var coinPaymentsCallbackURL string
 
 // debugging
-var runningOnLocalHost = false
+var runningDevelopmentServer = false
 
 
 // Called on start - parses CL args and starts the server
@@ -40,15 +44,16 @@ func main() {
 
 	// Parse command line arguments
 	mode := flag.String("mode", "debug", " 'debug' or 'production' - http or https + production logging")
-	callbackIP := flag.String("ip", "CALLBACK IP NOT SET", " callback url for coinpayments - for debugging use ngrok")
+	callbackIP := flag.String("ip", "http://localhost", " callback url for coinpayments - for debugging use ngrok")
 	flag.Parse()
-	log.Info().Msg( "callaback ip set to: " + *callbackIP)
 
-	// generate our full url for payment callbacks
-	resource := coinPaymentsCallbackResource
-	u, _ := url.ParseRequestURI(*callbackIP)
-	u.Path = resource
-	coinPaymentsCallbackURL = u.String()
+	currentIP, parseErr := url.ParseRequestURI(*callbackIP)
+	if parseErr != nil{
+		log.Info().Msg( "callback ip parse error: " + parseErr.Error())
+		return
+	}
+
+	log.Info().Msg( "payment callbacks ip: " + currentIP.String())
 
 
 	// setup
@@ -60,8 +65,8 @@ func main() {
 
 	// debug mode
 	if *mode == "debug" {
-		runningOnLocalHost = true
-		log.Info().Msg("running in debug more on port 80")
+		runningDevelopmentServer = true
+		log.Info().Msg("running in debug mode on port 80")
 
 		if err := http.ListenAndServe(":80", handlers.CORS()(r)); err != nil {
 			log.Fatal().Msg(err.Error())
@@ -69,7 +74,7 @@ func main() {
 
 		// production mode
 	} else if *mode == "production" {
-		runningOnLocalHost = false
+		runningDevelopmentServer = false
 		runProductionServer(r)
 	}
 
@@ -83,7 +88,10 @@ func registerHandlers(r *mux.Router){
 	// payments
 	r.HandleFunc("/generateCryptoTransaction", generateCryptoTransaction)
 	r.HandleFunc(coinPaymentsCallbackResource, cryptoPaymentCallback)
-	r.HandleFunc("/fiatPayment", getFiatPayment)
+	r.HandleFunc("/generateFiatTransaction", getFiatPayment)
+	r.HandleFunc("/fiatPaymentCallback", fiatPaymentCallback)
+
+	// openlaw
 	r.HandleFunc("/getOpenlawJWT", getOpenlawJWT)
 
 }
@@ -225,6 +233,11 @@ func generateCryptoTransaction(w http.ResponseWriter, r *http.Request) {
 	// client specifies crypto currency
 	cryptoCurrency := r.URL.Query()["crypto"][0]
 
+	// generate our full url for payment callbacks to make sure url works
+	coinPaymentsCallbackURL := currentIP
+	coinPaymentsCallbackURL.Path = coinPaymentsCallbackResource
+
+
 	// Ask coinpayments for a crypto transaction
 	coinClient := coinpayments.NewClient(config.CoinPaymentsPublic,config.CoinPaymentsPrivate, http.DefaultClient)
 	newTransaction := coinpayments.TransactionParams{
@@ -232,7 +245,7 @@ func generateCryptoTransaction(w http.ResponseWriter, r *http.Request) {
 		Currency1:  "USD",
 		Currency2:  cryptoCurrency,
 		BuyerEmail: config.TestEmail,
-		IPNUrl:     coinPaymentsCallbackURL,
+		IPNUrl: coinPaymentsCallbackURL.String(),
 	}
 	trans, _, err := coinClient.Transactions.NewTransaction(&newTransaction)
 
@@ -256,8 +269,75 @@ func generateCryptoTransaction(w http.ResponseWriter, r *http.Request) {
 
 
 // TODO
-func getFiatPayment(w http.ResponseWriter, r *http.Request) {
+func fiatPaymentCallback (w http.ResponseWriter, req *http.Request){
+	const MaxBodyBytes = int64(65536)
+	req.Body = http.MaxBytesReader(w, req.Body, MaxBodyBytes)
+	body, err := ioutil.ReadAll(req.Body)
+	if err != nil {
+		log.Error().Msg("Error reading request body: " + err.Error())
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
 
+	// Pass the request body & Stripe-Signature header to ConstructEvent, along with the webhook signing key
+	// You can find your endpoint's secret in your webhook settings
+	endpointSecret := "whsec_...";
+	event, err := webhook.ConstructEvent(body, req.Header.Get("Stripe-Signature"), endpointSecret)
+
+	if err != nil {
+		log.Error().Msg("Error verifying webhook signature: "+ err.Error())
+		w.WriteHeader(http.StatusBadRequest) // Return a 400 error on a bad signature
+		return
+	}
+
+	// Handle the checkout.session.completed event
+	if event.Type == "checkout.session.completed" {
+		var session stripe.CheckoutSession
+		err := json.Unmarshal(event.Data.Raw, &session)
+		if err != nil {
+			log.Error().Msg( "Error parsing webhook JSON: "+ err.Error())
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		// TODO Fulfill the purchase...
+		// handleCheckoutSession(session)
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+
+// TODO
+func getFiatPayment(w http.ResponseWriter, r *http.Request) {
+	// Set your secret key: remember to change this to your live secret key in production
+	// See your keys here: https://dashboard.stripe.com/account/apikeys
+	stripe.Key = "sk_test_4eC39HqLyjWDarjtT1zdp7dc"
+	params := &stripe.CheckoutSessionParams{
+		PaymentMethodTypes: stripe.StringSlice([]string{
+			"card",
+		}),
+		LineItems: []*stripe.CheckoutSessionLineItemParams{
+			&stripe.CheckoutSessionLineItemParams{
+				Name: stripe.String("T-shirt"),
+				Description: stripe.String("Comfortable cotton t-shirt"),
+				Amount: stripe.Int64(500),
+				Currency: stripe.String(string(stripe.CurrencyUSD)),
+				Quantity: stripe.Int64(1),
+			},
+		},
+		SuccessURL: stripe.String("https://example.com/success?session_id={CHECKOUT_SESSION_ID}"),
+		CancelURL: stripe.String("https://example.com/cancel"),
+	}
+
+
+	session, err := sessionStripe.New(params)
+	if err!=nil{
+		respondWithError(w,http.StatusBadRequest,err.Error())
+		return
+	}
+
+	respondWithJson(w,http.StatusAccepted,session)
 }
 
 
