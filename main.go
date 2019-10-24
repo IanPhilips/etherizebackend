@@ -44,7 +44,8 @@ func main() {
 
 	// Parse command line arguments
 	mode := flag.String("mode", "debug", " 'debug' or 'production' - http or https + production logging")
-	callbackIP := flag.String("ip", "http://localhost", " callback url for coinpayments - for debugging use ngrok")
+	callbackIP := flag.String("ip", "http://localhost", " callback url for payments - for " +
+		"local dev use ngrok")
 	flag.Parse()
 
 	currentIP, parseErr := url.ParseRequestURI(*callbackIP)
