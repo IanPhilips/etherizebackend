@@ -23,6 +23,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 
@@ -38,6 +39,10 @@ var coinPaymentsCallbackResource = "/cryptoPaymentCallback"
 // debugging
 var runningDevelopmentServer = false
 
+// default client with timeout
+var netClient = &http.Client{
+	Timeout: time.Second * 8,
+}
 
 // Called on start - parses CL args and starts the server
 func main() {
@@ -112,24 +117,28 @@ func getOpenlawJWT(w http.ResponseWriter, r *http.Request){
 	data.Set("password", config.OpenLawPassword)
 
 
-	client := &http.Client{}
 	r, _ = http.NewRequest("POST", urlStr, strings.NewReader(data.Encode())) // URL-encoded payload
 	r.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 	r.Header.Add("Content-Length", strconv.Itoa(len(data.Encode())))
 
-	resp, err := client.Do(r)
+	response := OpenlawJWT{}
+	code:= http.StatusAccepted
+
+	resp, err := netClient.Do(r)
+
+	// assign error
 	if err!= nil {
-		respondWithError(w, resp.StatusCode, err.Error())
-		return
+		response.Error = err.Error()
+		log.Error().Msg("openlaw request time out or failure!")
 	}
 
-	response := OpenlawJWT{
-		Jwt: resp.Header.Get("OPENLAW_JWT"),
-		Error:"",
+	// assign jwt and response code
+	if resp!= nil{
+		code = resp.StatusCode
+		response.Jwt = resp.Header.Get("OPENLAW_JWT")
 	}
 
-	respondWithJson(w,http.StatusAccepted,response)
-
+	respondWithJson(w,code,response)
 }
 
 
