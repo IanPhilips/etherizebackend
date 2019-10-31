@@ -396,7 +396,7 @@ func runProductionServer( r *mux.Router){
 		TLSConfig: &tls.Config{
 			GetCertificate: certManager.GetCertificate,
 		},
-		Handler: r,
+		Handler:  handlers.CORS()(r),
 	}
 
 	log.Info().Msg("running on https")
