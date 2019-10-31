@@ -28,7 +28,7 @@ import (
 
 
 // SSL for HTTPS
-var hostName = "etherize.io"
+var hostName = "api.etherize.io"
 var sslDir = "certs"
 var currentIP url.URL
 
