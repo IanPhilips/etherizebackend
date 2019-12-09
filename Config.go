@@ -14,6 +14,9 @@ type Config struct {
 	CoinPaymentsIPN string
 	CoinPaymentsMerchantId string
 	TestEmail string
+	BasicAuthUser string
+	BasicAuthPass string
+	KaleidoInstanceURL string
 }
 
 // Read and parse the configuration file
