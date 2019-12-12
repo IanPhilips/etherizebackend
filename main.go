@@ -96,80 +96,21 @@ func registerHandlers(r *mux.Router){
 	r.HandleFunc(coinPaymentsCallbackResource, cryptoPaymentCallback)
 	r.HandleFunc("/generateFiatTransaction", getFiatPayment)
 	r.HandleFunc("/fiatPaymentCallback", fiatPaymentCallback)
-	r.PathPrefix("/passThroughGETWithBasicAuthToOpenLaw/").HandlerFunc(passThroughGETWithBasicAuthToOpenLaw)
 
 	// openlaw
 	r.HandleFunc("/getOpenlawJWT", getOpenlawJWT)
 
-}
-
-
-func passThroughGETWithBasicAuthToOpenLaw(w http.ResponseWriter, r *http.Request){
-// dashboard: https://console.kaleido.io/dashboard/openlaw/u0vvwcatsl/u0ztgr50os/u0gzl2r9pj/u0flnq9hwd
-// TODO: make the auth code modular
-	resource := "/app/login"
-	ur, _ := url.ParseRequestURI(config.KaleidoInstanceURL)
-	ur.Path = resource
-	urlStr := ur.String()
-
-	data := url.Values{}
-	data.Set("userId", config.OpenLawUsername)
-	data.Set("password", config.OpenLawPassword)
-
-
-	newR, _ := http.NewRequest("POST", urlStr, strings.NewReader(data.Encode())) // URL-encoded payload
-	newR.Header.Add("Content-Type", "application/x-www-form-urlencoded")
-	newR.Header.Add("Content-Length", strconv.Itoa(len(data.Encode())))
-	newR.SetBasicAuth(config.BasicAuthUser,config.BasicAuthPass)
-	respon := OpenlawJWT{}
-
-	resp, err := netClient.Do(newR)
-
-	// assign error
-	if err!= nil {
-		respon.Error = err.Error()
-		log.Error().Msg("openlaw request time out or failure!")
-	}
-
-	// assign jwt and response code
-	if resp!= nil{
-		respon.Jwt = resp.Header.Get("OPENLAW_JWT")
-	}
-
-
-
-	// TODO; support more than just GET
-
-	newURL := r.URL.String()
-	newURL = strings.Replace(newURL, "/passThroughGETWithBasicAuthToOpenLaw", "",1)
-	u, _ := url.ParseRequestURI(config.KaleidoInstanceURL + newURL)
-	log.Info().Msg("new url: " + u.String())
-
-	req, _ := http.NewRequest("GET",u.String(), nil)
-	req.Header.Add("OPENLAW_JWT", respon.Jwt)
-
-	//req, _ := http.NewRequest("GET",u.String(), nil)
-	req.SetBasicAuth(config.BasicAuthUser,config.BasicAuthPass)
-	req.Header.Add("Cookie","OPENLAW_SESSION=xx")
-	response, err := netClient.Do(req)
-
-	if err!=nil{
-		respondWithError(w,http.StatusBadRequest, err.Error())
-		return
-	}
-	body, _ := ioutil.ReadAll(response.Body)
-	w.WriteHeader(response.StatusCode)
-	w.Write(body)
+	// unused
+	//r.PathPrefix("/passThroughGETWithBasicAuthToOpenLaw/").HandlerFunc(passThroughGETWithBasicAuthToOpenLaw)
 
 }
+
 
 
 // Gets a JWT from the Openlaw hosted instance using our credentials from the config.toml (not included in OS repo)
 // REST api details from https://docs.openlaw.io/api-client/#authentication
 func getOpenlawJWT(w http.ResponseWriter, r *http.Request){
 	// dashboard is here: https://console.kaleido.io/consortia/u0vvwcatsl
-
-	//apiUrl := "https://etherizeit.openlaw.io"
 	resource := "/app/login"
 	u, _ := url.ParseRequestURI(config.KaleidoInstanceURL)
 	u.Path = resource
@@ -497,4 +438,72 @@ func respondWithJson(w http.ResponseWriter, code int, payload interface{}) {
 	w.WriteHeader(code)
 	w.Write(response)
 }
+
+
+
+// Unused:
+
+// this function translated get requests to our server to get requests with basic auth attached
+// and made the request to our openlaw instance on Kaleido. For the sake of dev speed we're just going
+// to store the basic auth on the front-end and hope for the best for the time being!
+// TODO: when Kaleido introduces role-based basic auth, use that for users
+func passThroughGETWithBasicAuthToOpenLaw(w http.ResponseWriter, r *http.Request){
+	// dashboard: https://console.kaleido.io/dashboard/openlaw/u0vvwcatsl/u0ztgr50os/u0gzl2r9pj/u0flnq9hwd
+	// TODO: make the auth code modular
+	resource := "/app/login"
+	ur, _ := url.ParseRequestURI(config.KaleidoInstanceURL)
+	ur.Path = resource
+	urlStr := ur.String()
+
+	data := url.Values{}
+	data.Set("userId", config.OpenLawUsername)
+	data.Set("password", config.OpenLawPassword)
+
+
+	newR, _ := http.NewRequest("POST", urlStr, strings.NewReader(data.Encode())) // URL-encoded payload
+	newR.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+	newR.Header.Add("Content-Length", strconv.Itoa(len(data.Encode())))
+	newR.SetBasicAuth(config.BasicAuthUser,config.BasicAuthPass)
+	respon := OpenlawJWT{}
+
+	resp, err := netClient.Do(newR)
+
+	// assign error
+	if err!= nil {
+		respon.Error = err.Error()
+		log.Error().Msg("openlaw request time out or failure!")
+	}
+
+	// assign jwt and response code
+	if resp!= nil{
+		respon.Jwt = resp.Header.Get("OPENLAW_JWT")
+	}
+
+
+
+	// TODO; support more than just GET
+
+	newURL := r.URL.String()
+	newURL = strings.Replace(newURL, "/passThroughGETWithBasicAuthToOpenLaw", "",1)
+	u, _ := url.ParseRequestURI(config.KaleidoInstanceURL + newURL)
+	log.Info().Msg("new url: " + u.String())
+
+	req, _ := http.NewRequest("GET",u.String(), nil)
+	req.Header.Add("OPENLAW_JWT", respon.Jwt)
+
+	//req, _ := http.NewRequest("GET",u.String(), nil)
+	req.SetBasicAuth(config.BasicAuthUser,config.BasicAuthPass)
+	req.Header.Add("Cookie","OPENLAW_SESSION=xx")
+	response, err := netClient.Do(req)
+
+	if err!=nil{
+		respondWithError(w,http.StatusBadRequest, err.Error())
+		return
+	}
+	body, _ := ioutil.ReadAll(response.Body)
+	w.WriteHeader(response.StatusCode)
+	w.Write(body)
+
+}
+
 
