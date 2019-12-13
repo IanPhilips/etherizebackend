@@ -17,6 +17,11 @@ type Config struct {
 	BasicAuthUser string
 	BasicAuthPass string
 	KaleidoInstanceURL string
+	StripePublic string
+	StripePrivate string
+	StripeWebHookSecret string
+	MailGunPrivate string
+	MailGunPublic string
 }
 
 // Read and parse the configuration file

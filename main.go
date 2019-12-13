@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/hmac"
 	"crypto/sha512"
 	"crypto/tls"
@@ -12,6 +13,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/gorilla/schema"
 	"github.com/ianphilips/coinpayments-go/coinpayments"
+	"github.com/mailgun/mailgun-go"
 	"github.com/stripe/stripe-go"
 	sessionStripe "github.com/stripe/stripe-go/checkout/session"
 	"github.com/stripe/stripe-go/webhook"
@@ -27,22 +29,30 @@ import (
 )
 
 
-// SSL for HTTPS
-var hostName = "api.etherize.io"
-var sslDir = "certs"
-var currentIP url.URL
 
 
-// CoinPayments
-var coinPaymentsCallbackResource = "/cryptoPaymentCallback"
 
-// debugging
-var runningDevelopmentServer = false
+var (
+	// CoinPayments
+	coinPaymentsCallbackResource = "/cryptoPaymentCallback"
 
-// default client with timeout
-var netClient = &http.Client{
-	Timeout: time.Second * 8,
-}
+	// Stripe
+	fiatPaymentCallbackResource = "/fiatPaymentCallback"
+
+	// SSL for HTTPS
+	serverHostName      = "api.etherize.io"
+	sslDir              = "certs"
+	currentCallbackHost url.URL
+
+	// debugging
+	runningDevelopmentServer = false
+
+	// default client with timeout
+	netClient = &http.Client{
+		Timeout: time.Second * 8,
+	}
+)
+
 
 // Called on start - parses CL args and starts the server
 func main() {
@@ -53,13 +63,15 @@ func main() {
 		"local dev use ngrok")
 	flag.Parse()
 
-	currentIP, parseErr := url.ParseRequestURI(*callbackIP)
+	// make sure the ip passed is a url
+	currentCallbackIP, parseErr := url.ParseRequestURI(*callbackIP)
 	if parseErr != nil{
 		log.Info().Msg( "callback ip parse error: " + parseErr.Error())
 		return
 	}
 
-	log.Info().Msg( "payment callbacks ip: " + currentIP.String())
+	log.Info().Msg( "payment callbacks ip: " + currentCallbackIP.String())
+	currentCallbackHost = *currentCallbackIP
 
 
 	// setup
@@ -95,7 +107,7 @@ func registerHandlers(r *mux.Router){
 	r.HandleFunc("/generateCryptoTransaction", generateCryptoTransaction)
 	r.HandleFunc(coinPaymentsCallbackResource, cryptoPaymentCallback)
 	r.HandleFunc("/generateFiatTransaction", getFiatPayment)
-	r.HandleFunc("/fiatPaymentCallback", fiatPaymentCallback)
+	r.HandleFunc(fiatPaymentCallbackResource, fiatPaymentCallback)
 
 	// openlaw
 	r.HandleFunc("/getOpenlawJWT", getOpenlawJWT)
@@ -246,7 +258,7 @@ func generateCryptoTransaction(w http.ResponseWriter, r *http.Request) {
 	cryptoCurrency := r.URL.Query()["crypto"][0]
 
 	// generate our full url for payment callbacks to make sure url works
-	coinPaymentsCallbackURL := currentIP
+	coinPaymentsCallbackURL := currentCallbackHost
 	coinPaymentsCallbackURL.Path = coinPaymentsCallbackResource
 
 
@@ -278,7 +290,6 @@ func generateCryptoTransaction(w http.ResponseWriter, r *http.Request) {
 }
 
 
-// TODO
 func fiatPaymentCallback (w http.ResponseWriter, req *http.Request){
 	const MaxBodyBytes = int64(65536)
 	req.Body = http.MaxBytesReader(w, req.Body, MaxBodyBytes)
@@ -291,7 +302,7 @@ func fiatPaymentCallback (w http.ResponseWriter, req *http.Request){
 
 	// Pass the request body & Stripe-Signature header to ConstructEvent, along with the webhook signing key
 	// You can find your endpoint's secret in your webhook settings
-	endpointSecret := "whsec_...";
+	endpointSecret := config.StripeWebHookSecret
 	event, err := webhook.ConstructEvent(body, req.Header.Get("Stripe-Signature"), endpointSecret)
 
 	if err != nil {
@@ -310,40 +321,52 @@ func fiatPaymentCallback (w http.ResponseWriter, req *http.Request){
 			return
 		}
 
-		// TODO Fulfill the purchase...
-		// handleCheckoutSession(session)
+
+		log.Info().Msg("Payment Callback Complete - User successfully completed payment!")
+		sendEmail("Fiat Payment Completed! Time to file those papers.")
+
 	}
 
 	w.WriteHeader(http.StatusOK)
 }
 
-
-// TODO
+// TODO: if the user cancels a fiat payment, how do we make sure their openlaw form is saved?
 func getFiatPayment(w http.ResponseWriter, r *http.Request) {
 	// Set your secret key: remember to change this to your live secret key in production
 	// See your keys here: https://dashboard.stripe.com/account/apikeys
-	stripe.Key = "sk_test_4eC39HqLyjWDarjtT1zdp7dc"
+
+	// live key:
+	//stripe.Key = config.StripePrivate
+
+	// test key:
+	stripe.Key = "sk_test_fPVOpS8a0NQr7cJ1bF2GpKCw00C7ru06xe"
+
+	log.Info().Msg("stripe callback url: " + currentCallbackHost.String() + fiatPaymentCallbackResource)
+
 	params := &stripe.CheckoutSessionParams{
 		PaymentMethodTypes: stripe.StringSlice([]string{
 			"card",
 		}),
 		LineItems: []*stripe.CheckoutSessionLineItemParams{
 			&stripe.CheckoutSessionLineItemParams{
-				Name: stripe.String("T-shirt"),
-				Description: stripe.String("Comfortable cotton t-shirt"),
-				Amount: stripe.Int64(500),
+				Name: stripe.String("Etherize Entity Formation"),
+				Description: stripe.String("Blockchain-Friendly LLC"),
+				Amount: stripe.Int64(40000),
 				Currency: stripe.String(string(stripe.CurrencyUSD)),
 				Quantity: stripe.Int64(1),
+
 			},
+
 		},
-		SuccessURL: stripe.String("https://example.com/success?session_id={CHECKOUT_SESSION_ID}"),
-		CancelURL: stripe.String("https://example.com/cancel"),
+
+		SuccessURL: stripe.String("https://www.etherize.io/paid" + "?session_id={CHECKOUT_SESSION_ID}"),
+		CancelURL: stripe.String("https://www.etherize.io/create"),
 	}
 
 
 	session, err := sessionStripe.New(params)
 	if err!=nil{
-		respondWithError(w,http.StatusBadRequest,err.Error())
+		respondWithError(w,http.StatusInternalServerError,err.Error())
 		return
 	}
 
@@ -376,8 +399,8 @@ func runProductionServer( r *mux.Router){
 	//Key and cert are coming from Let's Encrypt
 	certManager := autocert.Manager{
 		Prompt:     autocert.AcceptTOS,
-		HostPolicy: autocert.HostWhitelist(hostName), //Your domain here
-		Cache:      autocert.DirCache(sslDir),             //Folder for storing certificates
+		HostPolicy: autocert.HostWhitelist(serverHostName), //Your domain here
+		Cache:      autocert.DirCache(sslDir),              //Folder for storing certificates
 	}
 
 
@@ -435,6 +458,19 @@ func respondWithJson(w http.ResponseWriter, code int, payload interface{}) {
 	w.Write(response)
 }
 
+func sendEmail(msg string) (string, error) {
+	domain := "sandbox0954f577172b473a9095f64ca6685226.mailgun.org"
+	mg := mailgun.NewMailgun(domain, config.MailGunPrivate)
+	m := mg.NewMessage(
+		"mailgun <mailgun@"+domain+">",
+		"Message from Etherize Servers",
+		msg,
+		config.TestEmail,
+	)
+
+	_, id, err := mg.Send(context.Background(), m)
+	return id, err
+}
 
 
 // Unused:
