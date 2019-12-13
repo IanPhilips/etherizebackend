@@ -240,8 +240,6 @@ func cryptoPaymentCallback(w http.ResponseWriter, r *http.Request) {
 
 // Generates a crypto transaction via CoinPayments
 func generateCryptoTransaction(w http.ResponseWriter, r *http.Request) {
-
-
 	// amount is in default USD
 	amount := .01
 	// client specifies crypto currency
@@ -263,21 +261,19 @@ func generateCryptoTransaction(w http.ResponseWriter, r *http.Request) {
 	}
 	trans, _, err := coinClient.Transactions.NewTransaction(&newTransaction)
 
-
 	if err!= nil {
 		log.Error().Msg(err.Error())
+		respondWithError(w,http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	if trans.Error!="ok"{
 		log.Error().Msg(trans.Error)
+		respondWithError(w,http.StatusInternalServerError, trans.Error)
 		return
 	}
 
 	log.Info().Msg("transaction created!")
-
-	// TODO show customer where to send crypto
-
 	respondWithJson(w,http.StatusAccepted, trans)
 }
 
