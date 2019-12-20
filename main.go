@@ -122,7 +122,7 @@ func pingKaleidoRecurrently(){
 	time.Sleep(3 * time.Second)
 
 	for {
-		r, _ := http.NewRequest("GET", "http://localhost/getOpenlawJWT", nil) // URL-encoded payload
+		r, _ := http.NewRequest("GET", currentCallbackHost.String() + "/getOpenlawJWT", nil) // URL-encoded payload
 		resp, err := netClient.Do(r)
 		if err !=nil{
 			log.Error().Msg("Kaleido ping error: " + err.Error())
