@@ -118,7 +118,10 @@ func registerHandlers(r *mux.Router){
 
 // kaleido pauses free instances after inactivity: https://docs.kaleido.io/faqs/why-is-my-environment-paused/
 func pingKaleidoRecurrently(){
- 	for {
+	// wait for server to come online
+	time.Sleep(3 * time.Second)
+
+	for {
 		r, _ := http.NewRequest("GET", "http://localhost/getOpenlawJWT", nil) // URL-encoded payload
 		resp, err := netClient.Do(r)
 		if err !=nil{
