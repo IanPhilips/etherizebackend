@@ -29,9 +29,6 @@ import (
 )
 
 
-
-
-
 var (
 	// CoinPayments
 	coinPaymentsCallbackResource = "/cryptoPaymentCallback"
@@ -80,6 +77,7 @@ func main() {
 	registerHandlers(r)
 	r.Use(loggingMiddleware)
 
+	go pingKaleidoRecurrently()
 
 	// debug mode
 	if *mode == "debug" {
@@ -117,6 +115,20 @@ func registerHandlers(r *mux.Router){
 
 }
 
+
+// kaleido pauses free instances after inactivity: https://docs.kaleido.io/faqs/why-is-my-environment-paused/
+func pingKaleidoRecurrently(){
+ 	for {
+		r, _ := http.NewRequest("GET", "http://localhost/getOpenlawJWT", nil) // URL-encoded payload
+		resp, err := netClient.Do(r)
+		if err !=nil{
+			log.Error().Msg("Kaleido ping error: " + err.Error())
+		} else {
+			log.Info().Msg("Kaleido ping response: " + resp.Status)
+		}
+		time.Sleep(70 * time.Hour)
+	}
+}
 
 
 // Gets a JWT from the Openlaw hosted instance using our credentials from the config.toml (not included in OS repo)
@@ -329,6 +341,7 @@ func fiatPaymentCallback (w http.ResponseWriter, req *http.Request){
 
 	w.WriteHeader(http.StatusOK)
 }
+
 
 // TODO: if the user cancels a fiat payment, how do we make sure their openlaw form is saved?
 func getFiatPayment(w http.ResponseWriter, r *http.Request) {

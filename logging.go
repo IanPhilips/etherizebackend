@@ -5,9 +5,10 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"time"
 )
 
-var logName = "Etherize.log"
+var logName = time.Now().Format("01-02-2003") + "_Etherize.log"
 var log = zlog.With().Caller().Logger()
 
 // logs all requests to server
