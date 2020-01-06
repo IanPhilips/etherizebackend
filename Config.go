@@ -21,6 +21,7 @@ type Config struct {
 	StripeWebHookSecret string
 	MailGunPrivate string
 	MailGunPublic string
+	OpenLawInstance string
 }
 
 // Read and parse the configuration file

@@ -119,11 +119,11 @@ func registerHandlers(r *mux.Router){
 // Gets a JWT from the Openlaw hosted instance using our credentials from the config.toml (not included in OS repo)
 // REST api details from https://docs.openlaw.io/api-client/#authentication
 func getOpenlawJWT(w http.ResponseWriter, r *http.Request){
-	// dashboard is here: https://console.kaleido.io/consortia/u0vvwcatsl
-	resource := "/app/login"
-	u, _ := url.ParseRequestURI(config.KaleidoInstanceURL)
+	resource := "api/v1/etherizeit/app/login"
+	u, _ := url.ParseRequestURI(config.OpenLawInstance)
 	u.Path = resource
 	urlStr := u.String()
+	log.Info().Msg(urlStr)
 
 	data := url.Values{}
 	data.Set("userId", config.OpenLawUsername)
@@ -132,8 +132,8 @@ func getOpenlawJWT(w http.ResponseWriter, r *http.Request){
 
 	r, _ = http.NewRequest("POST", urlStr, strings.NewReader(data.Encode())) // URL-encoded payload
 	r.Header.Add("Content-Type", "application/x-www-form-urlencoded")
-	r.Header.Add("Content-Length", strconv.Itoa(len(data.Encode())))
-	r.SetBasicAuth(config.BasicAuthUser,config.BasicAuthPass)
+	//r.Header.Add("Content-Length", strconv.Itoa(len(data.Encode())))
+	//r.SetBasicAuth(config.BasicAuthUser,config.BasicAuthPass)
 	response := OpenlawJWT{}
 	code:= http.StatusAccepted
 
@@ -481,7 +481,7 @@ func passThroughGETWithBasicAuthToOpenLaw(w http.ResponseWriter, r *http.Request
 	// dashboard: https://console.kaleido.io/dashboard/openlaw/u0vvwcatsl/u0ztgr50os/u0gzl2r9pj/u0flnq9hwd
 	// TODO: make the auth code modular
 	resource := "/app/login"
-	ur, _ := url.ParseRequestURI(config.KaleidoInstanceURL)
+	ur, _ := url.ParseRequestURI("kaleidoInstance")
 	ur.Path = resource
 	urlStr := ur.String()
 
@@ -515,7 +515,7 @@ func passThroughGETWithBasicAuthToOpenLaw(w http.ResponseWriter, r *http.Request
 
 	newURL := r.URL.String()
 	newURL = strings.Replace(newURL, "/passThroughGETWithBasicAuthToOpenLaw", "",1)
-	u, _ := url.ParseRequestURI(config.KaleidoInstanceURL + newURL)
+	u, _ := url.ParseRequestURI("kaleidoInstance" + newURL)
 	log.Info().Msg("new url: " + u.String())
 
 	req, _ := http.NewRequest("GET",u.String(), nil)
