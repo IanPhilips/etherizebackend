@@ -16,7 +16,6 @@ type Config struct {
 	TestEmail string
 	BasicAuthUser string
 	BasicAuthPass string
-	KaleidoInstanceURL string
 	StripePublic string
 	StripePrivate string
 	StripeWebHookSecret string

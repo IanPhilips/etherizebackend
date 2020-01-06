@@ -77,8 +77,6 @@ func main() {
 	registerHandlers(r)
 	r.Use(loggingMiddleware)
 
-	go pingKaleidoRecurrently()
-
 	// debug mode
 	if *mode == "debug" {
 		runningDevelopmentServer = true
@@ -116,22 +114,6 @@ func registerHandlers(r *mux.Router){
 }
 
 
-// kaleido pauses free instances after inactivity: https://docs.kaleido.io/faqs/why-is-my-environment-paused/
-func pingKaleidoRecurrently(){
-	// wait for server to come online
-	time.Sleep(3 * time.Second)
-
-	for {
-		r, _ := http.NewRequest("GET", currentCallbackHost.String() + "/getOpenlawJWT", nil) // URL-encoded payload
-		resp, err := netClient.Do(r)
-		if err !=nil{
-			log.Error().Msg("Kaleido ping error: " + err.Error())
-		} else {
-			log.Info().Msg("Kaleido ping response: " + resp.Status)
-		}
-		time.Sleep(70 * time.Hour)
-	}
-}
 
 
 // Gets a JWT from the Openlaw hosted instance using our credentials from the config.toml (not included in OS repo)
@@ -554,4 +536,24 @@ func passThroughGETWithBasicAuthToOpenLaw(w http.ResponseWriter, r *http.Request
 
 }
 
+
+
+// kaleido pauses free instances after inactivity: https://docs.kaleido.io/faqs/why-is-my-environment-paused/
+func pingKaleidoRecurrently(){
+	// wait for server to come online
+	time.Sleep(3 * time.Second)
+
+	for {
+		r, _ := http.NewRequest("GET", currentCallbackHost.String() + "/getOpenlawJWT", nil) // URL-encoded payload
+		//r, _ := http.NewRequest("GET", config.KaleidoInstanceURL + "/", nil) // URL-encoded payload
+
+		resp, err := netClient.Do(r)
+		if err !=nil{
+			log.Error().Msg("Kaleido ping error: " + err.Error())
+		} else {
+			log.Info().Msg("Kaleido ping response: " + resp.Status)
+		}
+		time.Sleep(70 * time.Hour)
+	}
+}
 
