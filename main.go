@@ -333,6 +333,34 @@ func getFiatPayment(w http.ResponseWriter, r *http.Request) {
 	// Set your secret key: remember to change this to your live secret key in production
 	// See your keys here: https://dashboard.stripe.com/account/apikeys
 
+
+	key := "email"
+	keys, ok := r.URL.Query()[key]
+	if !ok || len(keys[0]) < 1 {
+		missingParam :="Url Param " + key +" is missing"
+		log.Error().Msg(missingParam)
+		respondWithError(w,http.StatusBadRequest, missingParam)
+		return
+	}
+	email :=keys[0]
+
+	key = "price"
+	keys, ok = r.URL.Query()[key]
+	if !ok || len(keys[0]) < 1 {
+		missingParam :="Url Param " + key +" is missing"
+		log.Error().Msg(missingParam)
+		respondWithError(w,http.StatusBadRequest, missingParam)
+		return
+	}
+
+	price, err := strconv.ParseInt(keys[0], 10, 64)
+	if err!=nil{
+		badInt := "price as int not formatted correctly"
+		log.Error().Msg(badInt)
+		respondWithError(w,http.StatusBadRequest, badInt)
+		return
+	}
+
 	// live key:
 	//stripe.Key = config.StripePrivate
 
@@ -349,7 +377,7 @@ func getFiatPayment(w http.ResponseWriter, r *http.Request) {
 			&stripe.CheckoutSessionLineItemParams{
 				Name: stripe.String("Etherize Entity Formation"),
 				Description: stripe.String("Blockchain-Friendly LLC"),
-				Amount: stripe.Int64(40000),
+				Amount: stripe.Int64(price),
 				Currency: stripe.String(string(stripe.CurrencyUSD)),
 				Quantity: stripe.Int64(1),
 
@@ -357,7 +385,9 @@ func getFiatPayment(w http.ResponseWriter, r *http.Request) {
 
 		},
 
-		SuccessURL: stripe.String("https://www.etherize.io/paid" + "?session_id={CHECKOUT_SESSION_ID}"),
+		SuccessURL: stripe.String("https://www.etherize.io/paid" +
+			"?session_id={CHECKOUT_SESSION_ID}" +
+			"&email=" + email),
 		CancelURL: stripe.String("https://www.etherize.io/create"),
 	}
 
@@ -476,7 +506,6 @@ func sendEmail(msg string) (string, error) {
 // this function translated get requests to our server to get requests with basic auth attached
 // and made the request to our openlaw instance on Kaleido. For the sake of dev speed we're just going
 // to store the basic auth on the front-end and hope for the best for the time being!
-// TODO: when Kaleido introduces role-based basic auth, use that for users
 func passThroughGETWithBasicAuthToOpenLaw(w http.ResponseWriter, r *http.Request){
 	// dashboard: https://console.kaleido.io/dashboard/openlaw/u0vvwcatsl/u0ztgr50os/u0gzl2r9pj/u0flnq9hwd
 	// TODO: make the auth code modular
