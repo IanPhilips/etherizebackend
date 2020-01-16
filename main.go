@@ -330,36 +330,28 @@ func fiatPaymentCallback (w http.ResponseWriter, req *http.Request){
 
 // TODO: if the user cancels a fiat payment, how do we make sure their openlaw form is saved?
 func getFiatPayment(w http.ResponseWriter, r *http.Request) {
-	// Set your secret key: remember to change this to your live secret key in production
-	// See your keys here: https://dashboard.stripe.com/account/apikeys
 
-
-	keys := r.URL.Query()
-	key := "email"
-	if len(keys[key]) < 1 {
-		missingParam :="Url Param " + key +" is missing"
-		log.Error().Msg(missingParam)
-		respondWithError(w,http.StatusBadRequest, missingParam)
-		return
-	}
-	email := keys[key][0]
-
-	key = "price"
-	if len(keys[key]) < 1 {
-		missingParam :="Url Param " + key +" is missing"
+	key1 := "email"
+	email := r.FormValue(key1)
+	key2 := "price"
+	price := r.FormValue(key2)
+	if email == ""  || price == ""{
+		missingParam :="Url Param " + key1 + " or " +key2 +" is missing"
 		log.Error().Msg(missingParam)
 		respondWithError(w,http.StatusBadRequest, missingParam)
 		return
 	}
 
-	price, err := strconv.ParseInt(keys[key][0], 10, 64)
+	priceInt, err := strconv.ParseInt(price, 10, 64)
 	if err!=nil{
-		badInt := "price as int not formatted correctly"
+		badInt := key2 + " as int not formatted correctly"
 		log.Error().Msg(badInt)
 		respondWithError(w,http.StatusBadRequest, badInt)
 		return
 	}
 
+	// Set your secret key: remember to change this to your live secret key in production
+	// See your keys here: https://dashboard.stripe.com/account/apikeys
 	// live key:
 	//stripe.Key = config.StripePrivate
 
@@ -376,7 +368,7 @@ func getFiatPayment(w http.ResponseWriter, r *http.Request) {
 			&stripe.CheckoutSessionLineItemParams{
 				Name: stripe.String("Etherize Entity Formation"),
 				Description: stripe.String("Blockchain-Friendly LLC"),
-				Amount: stripe.Int64(price),
+				Amount: stripe.Int64(priceInt),
 				Currency: stripe.String(string(stripe.CurrencyUSD)),
 				Quantity: stripe.Int64(1),
 
