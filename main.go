@@ -334,26 +334,25 @@ func getFiatPayment(w http.ResponseWriter, r *http.Request) {
 	// See your keys here: https://dashboard.stripe.com/account/apikeys
 
 
+	keys := r.URL.Query()
 	key := "email"
-	keys, ok := r.URL.Query()[key]
-	if !ok || len(keys[0]) < 1 {
+	if len(keys[key]) < 1 {
 		missingParam :="Url Param " + key +" is missing"
 		log.Error().Msg(missingParam)
 		respondWithError(w,http.StatusBadRequest, missingParam)
 		return
 	}
-	email :=keys[0]
+	email := keys[key][0]
 
 	key = "price"
-	keys, ok = r.URL.Query()[key]
-	if !ok || len(keys[0]) < 1 {
+	if len(keys[key]) < 1 {
 		missingParam :="Url Param " + key +" is missing"
 		log.Error().Msg(missingParam)
 		respondWithError(w,http.StatusBadRequest, missingParam)
 		return
 	}
 
-	price, err := strconv.ParseInt(keys[0], 10, 64)
+	price, err := strconv.ParseInt(keys[key][0], 10, 64)
 	if err!=nil{
 		badInt := "price as int not formatted correctly"
 		log.Error().Msg(badInt)
