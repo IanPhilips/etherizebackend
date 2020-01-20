@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"flag"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
@@ -249,10 +250,35 @@ func cryptoPaymentCallback(w http.ResponseWriter, r *http.Request) {
 
 // Generates a crypto transaction via CoinPayments
 func generateCryptoTransaction(w http.ResponseWriter, r *http.Request) {
-	// amount is in default USD
-	amount := .01
+
 	// client specifies crypto currency
-	cryptoCurrency := r.URL.Query()["crypto"][0]
+	buyerEmail, err1:= getQueryValueOrError("buyerEmail", r)
+	if err1 != nil {
+		respondWithError(w,http.StatusBadRequest, err1.Error())
+		return
+	}
+
+	// client specifies crypto currency
+	cryptoCurrency, err1:= getQueryValueOrError("crypto", r)
+	if err1 != nil {
+		respondWithError(w,http.StatusBadRequest, err1.Error())
+		return
+	}
+
+	// price is in default USD
+	price, err2:= getQueryValueOrError("price", r)
+	if err2 != nil {
+		respondWithError(w,http.StatusBadRequest, err2.Error())
+		return
+	}
+
+	amount, err := strconv.ParseFloat(price,  64)
+	if err!=nil{
+		badInt := "price as int not formatted correctly"
+		log.Error().Msg(badInt)
+		respondWithError(w,http.StatusBadRequest, badInt)
+		return
+	}
 
 	// generate our full url for payment callbacks to make sure url works
 	coinPaymentsCallbackURL := currentCallbackHost
@@ -265,7 +291,7 @@ func generateCryptoTransaction(w http.ResponseWriter, r *http.Request) {
 		Amount:     amount,
 		Currency1:  "USD",
 		Currency2:  cryptoCurrency,
-		BuyerEmail: config.TestEmail,
+		BuyerEmail: buyerEmail,
 		IPNUrl: coinPaymentsCallbackURL.String(),
 	}
 	trans, _, err := coinClient.Transactions.NewTransaction(&newTransaction)
@@ -320,7 +346,7 @@ func fiatPaymentCallback (w http.ResponseWriter, req *http.Request){
 
 
 		log.Info().Msg("Payment Callback Complete - User successfully completed payment!")
-		sendEmail("Fiat Payment Completed! Time to file those papers.")
+		sendEmailToTestEmailInConfig("Fiat Payment Completed! Time to file those papers.")
 
 	}
 
@@ -331,20 +357,20 @@ func fiatPaymentCallback (w http.ResponseWriter, req *http.Request){
 // TODO: if the user cancels a fiat payment, how do we make sure their openlaw form is saved?
 func getFiatPayment(w http.ResponseWriter, r *http.Request) {
 
-	key1 := "email"
-	email := r.FormValue(key1)
-	key2 := "price"
-	price := r.FormValue(key2)
-	if email == ""  || price == ""{
-		missingParam :="Url Param " + key1 + " or " +key2 +" is missing"
-		log.Error().Msg(missingParam)
-		respondWithError(w,http.StatusBadRequest, missingParam)
+	email, err1:= getQueryValueOrError("email", r)
+	if err1 != nil {
+		respondWithError(w,http.StatusBadRequest, err1.Error())
+		return
+	}
+	price, err2:= getQueryValueOrError("price", r)
+	if err2 != nil {
+		respondWithError(w,http.StatusBadRequest, err2.Error())
 		return
 	}
 
 	priceInt, err := strconv.ParseInt(price, 10, 64)
 	if err!=nil{
-		badInt := key2 + " as int not formatted correctly"
+		badInt := "price as int not formatted correctly"
 		log.Error().Msg(badInt)
 		respondWithError(w,http.StatusBadRequest, badInt)
 		return
@@ -390,6 +416,18 @@ func getFiatPayment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondWithJson(w,http.StatusAccepted,session)
+}
+
+
+func getQueryValueOrError(key string, r *http.Request) (string, error){
+	keyValue := r.FormValue(key)
+	if keyValue == "" {
+		missingParam :="Url Param " + key +" is missing"
+		log.Error().Msg(missingParam)
+		return "", errors.New(missingParam)
+	}
+	return keyValue, nil
+
 }
 
 
@@ -477,7 +515,7 @@ func respondWithJson(w http.ResponseWriter, code int, payload interface{}) {
 	w.Write(response)
 }
 
-func sendEmail(msg string) (string, error) {
+func sendEmailToTestEmailInConfig(msg string) (string, error) {
 	domain := "sandbox0954f577172b473a9095f64ca6685226.mailgun.org"
 	mg := mailgun.NewMailgun(domain, config.MailGunPrivate)
 	m := mg.NewMessage(
