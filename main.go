@@ -47,7 +47,7 @@ var (
 
 	// default client with timeout
 	netClient = &http.Client{
-		Timeout: time.Second * 8,
+		Timeout: time.Second * 5,
 	}
 )
 
@@ -109,6 +109,8 @@ func registerHandlers(r *mux.Router){
 	// openlaw
 	r.HandleFunc("/getOpenlawJWT", getOpenlawJWT)
 	r.HandleFunc("/inviteNewUser", inviteNewUser)
+	r.HandleFunc("/checkUserExists", checkUserExists)
+
 
 	// misc
 	r.HandleFunc("/sendAdminsEmail", sendAdminsEmail)
@@ -119,6 +121,69 @@ func registerHandlers(r *mux.Router){
 
 }
 
+
+func checkUserExists(w http.ResponseWriter, r *http.Request) {
+	type userExists struct {
+		UserExists bool `json:"userExists"`
+		//Error string `json:"error"`
+	}
+	// client specifies email
+	email, err1:= getQueryValueOrError("email", r)
+	if err1 != nil {
+		respondWithError(w,http.StatusBadRequest, err1.Error())
+		return
+	}
+
+	openLawJWT, code := getOpenLawJWTForUser(config.OpenLawUsernameAdmin, config.OpenLawPasswordAdmin)
+	if  openLawJWT.Error != "" {
+		respondWithError(w,code, openLawJWT.Error)
+		return
+	}
+
+	urlStr := config.GetOpenLawUrl("/users/search")
+
+	req, _ := http.NewRequest("GET",urlStr, nil)
+	req.Header.Add("OPENLAW_JWT", openLawJWT.Jwt)
+
+	q := req.URL.Query()
+	q.Add("keyword", email)
+	q.Add("page", "1")
+	q.Add("pageSize", "25")
+	req.URL.RawQuery = q.Encode()
+
+	resp, err := netClient.Do(req)
+
+	if err != nil{
+		respondWithError(w,resp.StatusCode,err.Error())
+		return
+	}
+
+	type OLUserExistsResponse struct {
+		NbHits int `json:"nbHits"`
+		Data   []struct {
+			ID    string `json:"id"`
+			Email string `json:"email"`
+			Name  string `json:"name"`
+			Role  string `json:"role"`
+		} `json:"data"`
+	}
+	var bodyBytes []byte
+	bodyBytes, _ = ioutil.ReadAll(resp.Body)
+	olResp :=  OLUserExistsResponse{}
+
+	errParse := json.Unmarshal(bodyBytes,&olResp)
+	if errParse != nil {
+		respondWithError(w,http.StatusBadRequest,errParse.Error())
+		return
+	}
+
+	userExistsResp := userExists{
+		UserExists:olResp.NbHits>0,
+	}
+
+	respondWithJson(w,resp.StatusCode,userExistsResp)
+
+}
 
 func sendAdminsEmail(w http.ResponseWriter, r *http.Request) {
 	message, err1:= getQueryValueOrError("message", r)
@@ -140,7 +205,7 @@ func sendAdminsEmail(w http.ResponseWriter, r *http.Request) {
 
 
 func inviteNewUser(w http.ResponseWriter, r *http.Request){
-	// client specifies crypto currency
+	// client specifies email
 	newUserEmail, err1:= getQueryValueOrError("newUserEmail", r)
 	if err1 != nil {
 		respondWithError(w,http.StatusBadRequest, err1.Error())
