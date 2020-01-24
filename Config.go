@@ -10,26 +10,26 @@ var config = Config{}
 
 // Represents database server and credentials
 type Config struct {
-	OpenLawUsername string
-	OpenLawPassword string
-	OpenLawUsernameAdmin string
-	OpenLawPasswordAdmin string
-	CoinPaymentsPublic string
-	CoinPaymentsPrivate string
-	CoinPaymentsIPN string
+	OpenLawUsername        string
+	OpenLawPassword        string
+	OpenLawUsernameAdmin   string
+	OpenLawPasswordAdmin   string
+	CoinPaymentsPublic     string
+	CoinPaymentsPrivate    string
+	CoinPaymentsIPN        string
 	CoinPaymentsMerchantId string
-	TestEmail string
-	BasicAuthUser string
-	BasicAuthPass string
-	StripePublic string
-	StripePrivate string
-	StripeWebHookSecret string
-	MailGunPrivate string
-	MailGunPublic string
-	OpenLawInstance string
-	OpenLawInstanceBase string
-	OpenLawInstanceName string
-	ServerLocation string
+	AdminEmail             string
+	BasicAuthUser          string
+	BasicAuthPass          string
+	StripePublic           string
+	StripePrivate          string
+	StripeWebHookSecret    string
+	MailGunPrivate         string
+	MailGunPublic          string
+	OpenLawInstance        string
+	OpenLawInstanceBase    string
+	OpenLawInstanceName    string
+	ServerLocation         string
 }
 
 // Read and parse the configuration file

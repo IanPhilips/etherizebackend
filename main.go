@@ -191,7 +191,7 @@ func sendAdminsEmail(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w,http.StatusBadRequest, err1.Error())
 		return
 	}
-	id, err :=sendEmailToTestEmailInConfig(message)
+	id, err := sendEmail("IMPORTANT",message, config.AdminEmail)
 	if err!=nil{
 		log.Error().Msg("email couldn't send to admins with error: " + err.Error())
 		respondWithError(w,http.StatusBadRequest, err.Error())
@@ -341,6 +341,7 @@ func cryptoPaymentCallback(w http.ResponseWriter, r *http.Request) {
 	log.Info().Msg("callback successfully processed with status: " + transactionCallback.StatusText)
 	log.Info().Msg("Coinpayments update for transaction id: " + transactionCallback.Id)
 
+	log.Info().Msg( "transaction email: " + transactionCallback.Email)
 
 
 	paymentComplete := false
@@ -372,6 +373,9 @@ func cryptoPaymentCallback(w http.ResponseWriter, r *http.Request) {
 
 
 	if paymentComplete{
+		sendEmail("Payment Complete!", "We'll be in touch as we summon your " +
+			"Entity from the Ether. See: https://" + config.ServerLocation + "/paid for " +
+			"for your next steps. ", config.AdminEmail)
 		// TODO notify user of completed payment and that we're working on creating their entity
 		// TODO notify any other parties of completed payment other than ian (default email on coinpayments)
 	}
@@ -478,7 +482,9 @@ func fiatPaymentCallback (w http.ResponseWriter, req *http.Request){
 
 
 		log.Info().Msg("Payment Callback Complete - User successfully completed payment!")
-		sendEmailToTestEmailInConfig("Fiat Payment Completed! Time to file those papers.")
+		sendEmail("Payment Complete",
+			"Fiat Payment Completed! Time to file those papers.",
+			config.AdminEmail)
 
 	}
 
@@ -654,14 +660,14 @@ func respondWithJson(w http.ResponseWriter, code int, payload interface{}) {
 }
 
 
-func sendEmailToTestEmailInConfig(msg string) (string, error) {
-	domain := "sandbox0954f577172b473a9095f64ca6685226.mailgun.org"
+func sendEmail(title string, msg string, recipient string) (string, error) {
+	domain := "mg." + config.ServerLocation
 	mg := mailgun.NewMailgun(domain, config.MailGunPrivate)
 	m := mg.NewMessage(
-		"mailgun <mailgun@"+domain+">",
-		"Message from " + config.ServerLocation + " Servers",
+		config.ServerLocation + " <noreply@"+config.ServerLocation+">",
+		title,
 		msg,
-		config.TestEmail,
+		recipient,
 	)
 
 	_, id, err := mg.Send(context.Background(), m)
