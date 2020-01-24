@@ -374,10 +374,16 @@ func cryptoPaymentCallback(w http.ResponseWriter, r *http.Request) {
 
 	if paymentComplete{
 		sendEmail("Payment Complete!", "We'll be in touch as we summon your " +
-			"Entity from the Ether. See: https://" + config.ServerLocation + "/paid for " +
-			"for your next steps. ", config.AdminEmail)
-		// TODO notify user of completed payment and that we're working on creating their entity
-		// TODO notify any other parties of completed payment other than ian (default email on coinpayments)
+			"Entity from the Ether. See: https://" + config.ServerLocation + "/paid?email= " +
+			transactionCallback.Email +
+			" for your next steps. ", transactionCallback.Email)
+
+		sendEmail("Payment Complete!", "We'll be in touch as we summon your " +
+			"Entity from the Ether. See: https://" + config.ServerLocation + "/paid?email= " +
+			transactionCallback.Email +
+			" for your next steps. ", config.AdminEmail)
+
+
 	}
 
 
