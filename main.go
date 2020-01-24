@@ -38,7 +38,7 @@ var (
 	fiatPaymentCallbackResource = "/fiatPaymentCallback"
 
 	// SSL for HTTPS
-	serverHostName      = "api.etherize.io"
+	serverHostARecord = "api"
 	sslDir              = "certs"
 	currentCallbackHost url.URL
 
@@ -108,6 +108,11 @@ func registerHandlers(r *mux.Router){
 
 	// openlaw
 	r.HandleFunc("/getOpenlawJWT", getOpenlawJWT)
+	r.HandleFunc("/inviteNewUser", inviteNewUser)
+
+	// misc
+	r.HandleFunc("/sendAdminsEmail", sendAdminsEmail)
+
 
 	// unused
 	//r.PathPrefix("/passThroughGETWithBasicAuthToOpenLaw/").HandlerFunc(passThroughGETWithBasicAuthToOpenLaw)
@@ -115,44 +120,106 @@ func registerHandlers(r *mux.Router){
 }
 
 
+func sendAdminsEmail(w http.ResponseWriter, r *http.Request) {
+	message, err1:= getQueryValueOrError("message", r)
+	if err1 != nil {
+		respondWithError(w,http.StatusBadRequest, err1.Error())
+		return
+	}
+	id, err :=sendEmailToTestEmailInConfig(message)
+	if err!=nil{
+		log.Error().Msg("email couldn't send to admins with error: " + err.Error())
+		respondWithError(w,http.StatusBadRequest, err.Error())
+		return
+	}
+	log.Info().Msg("email sent to admins with id: " + id)
+	respondWithJson(w,http.StatusAccepted,"")
+
+}
+
+
+
+func inviteNewUser(w http.ResponseWriter, r *http.Request){
+	// client specifies crypto currency
+	newUserEmail, err1:= getQueryValueOrError("newUserEmail", r)
+	if err1 != nil {
+		respondWithError(w,http.StatusBadRequest, err1.Error())
+		return
+	}
+
+	openLawJWT, code := getOpenLawJWTForUser(config.OpenLawUsernameAdmin, config.OpenLawPasswordAdmin)
+	if  openLawJWT.Error != "" {
+		respondWithError(w,code, openLawJWT.Error)
+		return
+	}
+	urlStr := config.GetOpenLawUrl("/user/emailMultipleNewUsers/user")
+
+	type newUserReq struct {
+		Emails []string `json:"emails"`
+		InstanceName string `json:"instanceName"`
+	}
+
+	newUserEmails:= []string{newUserEmail}
+	emails := newUserReq{newUserEmails, config.OpenLawInstanceName }
+
+	json, _ := json.Marshal(emails)
+
+	req, _ := http.NewRequest("POST", urlStr, bytes.NewBuffer(json))
+	req.Header.Add("Content-Type", "application/json")
+	req.Header.Add("OPENLAW_JWT", openLawJWT.Jwt)
+
+	resp, err := netClient.Do(req)
+
+	if err != nil{
+		respondWithError(w,resp.StatusCode,err.Error())
+		return
+	}
+
+	respondWithJson(w,resp.StatusCode,resp.Status)
+}
+
+
+func getOpenLawJWTForUser(user string, pass string) (OpenlawJWT, int){
+	urlStr := config.GetOpenLawUrl("/app/login")
+	//log.Info().Msg(urlStr)
+
+	data := url.Values{}
+	data.Set("userId", user)
+	data.Set("password", pass)
+
+
+	r, _ := http.NewRequest("POST", urlStr, strings.NewReader(data.Encode())) // URL-encoded payload
+	r.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+	openLawJWT := OpenlawJWT{}
+	code:= http.StatusAccepted
+	resp, err := netClient.Do(r)
+
+	// assign error
+	if err!= nil {
+		openLawJWT.Error = err.Error()
+		log.Error().Msg("openlaw request time out or failure!")
+	}
+
+	// assign jwt and openLawJWT code
+	if resp!= nil{
+		code = resp.StatusCode
+		openLawJWT.Jwt = resp.Header.Get("OPENLAW_JWT")
+		if code>=300{
+			openLawJWT.Error = resp.Status
+		}
+	}
+
+	return openLawJWT, code
+}
 
 
 // Gets a JWT from the Openlaw hosted instance using our credentials from the config.toml (not included in OS repo)
 // REST api details from https://docs.openlaw.io/api-client/#authentication
 func getOpenlawJWT(w http.ResponseWriter, r *http.Request){
-	resource := "api/v1/etherizeit/app/login"
-	u, _ := url.ParseRequestURI(config.OpenLawInstance)
-	u.Path = resource
-	urlStr := u.String()
-	log.Info().Msg(urlStr)
 
-	data := url.Values{}
-	data.Set("userId", config.OpenLawUsername)
-	data.Set("password", config.OpenLawPassword)
+	openLawJWT, code := getOpenLawJWTForUser(config.OpenLawUsername, config.OpenLawPassword)
 
-
-	r, _ = http.NewRequest("POST", urlStr, strings.NewReader(data.Encode())) // URL-encoded payload
-	r.Header.Add("Content-Type", "application/x-www-form-urlencoded")
-	//r.Header.Add("Content-Length", strconv.Itoa(len(data.Encode())))
-	//r.SetBasicAuth(config.BasicAuthUser,config.BasicAuthPass)
-	response := OpenlawJWT{}
-	code:= http.StatusAccepted
-
-	resp, err := netClient.Do(r)
-
-	// assign error
-	if err!= nil {
-		response.Error = err.Error()
-		log.Error().Msg("openlaw request time out or failure!")
-	}
-
-	// assign jwt and response code
-	if resp!= nil{
-		code = resp.StatusCode
-		response.Jwt = resp.Header.Get("OPENLAW_JWT")
-	}
-
-	respondWithJson(w,code,response)
+	respondWithJson(w,code, openLawJWT)
 }
 
 
@@ -353,7 +420,6 @@ func fiatPaymentCallback (w http.ResponseWriter, req *http.Request){
 	w.WriteHeader(http.StatusOK)
 }
 
-
 // TODO: if the user cancels a fiat payment, how do we make sure their openlaw form is saved?
 func getFiatPayment(w http.ResponseWriter, r *http.Request) {
 
@@ -376,6 +442,12 @@ func getFiatPayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	product, err3:= getQueryValueOrError("product", r)
+	if err3 != nil {
+		respondWithError(w,http.StatusBadRequest, err3.Error())
+		return
+	}
+
 	// Set your secret key: remember to change this to your live secret key in production
 	// See your keys here: https://dashboard.stripe.com/account/apikeys
 	// live key:
@@ -392,8 +464,8 @@ func getFiatPayment(w http.ResponseWriter, r *http.Request) {
 		}),
 		LineItems: []*stripe.CheckoutSessionLineItemParams{
 			&stripe.CheckoutSessionLineItemParams{
-				Name: stripe.String("Etherize Entity Formation"),
-				Description: stripe.String("Blockchain-Friendly LLC"),
+				Name: stripe.String(config.ServerLocation),
+				Description: stripe.String(product),
 				Amount: stripe.Int64(priceInt),
 				Currency: stripe.String(string(stripe.CurrencyUSD)),
 				Quantity: stripe.Int64(1),
@@ -402,10 +474,10 @@ func getFiatPayment(w http.ResponseWriter, r *http.Request) {
 
 		},
 
-		SuccessURL: stripe.String("https://www.etherize.io/paid" +
+		SuccessURL: stripe.String("https://www." + config.ServerLocation + "/paid" +
 			"?session_id={CHECKOUT_SESSION_ID}" +
 			"&email=" + email),
-		CancelURL: stripe.String("https://www.etherize.io/create"),
+		CancelURL: stripe.String("https://www." + config.ServerLocation + "/create"),
 	}
 
 
@@ -449,6 +521,7 @@ func runProductionServer( r *mux.Router){
 	}()
 
 	SetupProductionLogger(f)
+	serverHostName := serverHostARecord + "." + config.ServerLocation
 
 	// Ian gets a text if we have a fatal error
 	//log = AttachErrorMessaging(avalogging.Log)
@@ -515,12 +588,13 @@ func respondWithJson(w http.ResponseWriter, code int, payload interface{}) {
 	w.Write(response)
 }
 
+
 func sendEmailToTestEmailInConfig(msg string) (string, error) {
 	domain := "sandbox0954f577172b473a9095f64ca6685226.mailgun.org"
 	mg := mailgun.NewMailgun(domain, config.MailGunPrivate)
 	m := mg.NewMessage(
 		"mailgun <mailgun@"+domain+">",
-		"Message from Etherize Servers",
+		"Message from " + config.ServerLocation + " Servers",
 		msg,
 		config.TestEmail,
 	)
@@ -528,6 +602,8 @@ func sendEmailToTestEmailInConfig(msg string) (string, error) {
 	_, id, err := mg.Send(context.Background(), m)
 	return id, err
 }
+
+
 
 
 // Unused:
