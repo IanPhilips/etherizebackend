@@ -324,6 +324,7 @@ func cryptoPaymentCallback(w http.ResponseWriter, r *http.Request) {
 	// decode form to callback struct
 	transactionCallback := new(TransactionCallback)
 	decoder := schema.NewDecoder()
+	decoder.IgnoreUnknownKeys(true)
 	err = decoder.Decode(transactionCallback, r.Form)
 	if err != nil {
 		log.Error().Msg("couldn't decode callback: " + err.Error())
@@ -351,10 +352,12 @@ func cryptoPaymentCallback(w http.ResponseWriter, r *http.Request) {
 		break
 	case 1:
 		log.Info().Msg("coins received!")
+		//TODO: we will want to be more stringent in the future, wait for confirmation
+		//paymentComplete = true
 		break
 	case 2:
 		log.Info().Msg("coins queued for payout!")
-		paymentComplete = true
+		//paymentComplete = true
 		break
 	case -1:
 		log.Info().Msg("payment cancelled or timed out")
