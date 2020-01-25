@@ -377,14 +377,12 @@ func cryptoPaymentCallback(w http.ResponseWriter, r *http.Request) {
 
 	if paymentComplete{
 		sendEmail("Payment Complete!", "We'll be in touch as we summon your " +
-			"Entity from the Ether. See: https://" + config.ServerLocation + "/paid?email= " +
+			"Entity from the Ether. See: https://" + config.ServerLocation + "/paid?email=" +
 			transactionCallback.Email +
 			" for your next steps. ", transactionCallback.Email)
 
-		sendEmail("Payment Complete!", "We'll be in touch as we summon your " +
-			"Entity from the Ether. See: https://" + config.ServerLocation + "/paid?email= " +
-			transactionCallback.Email +
-			" for your next steps. ", config.AdminEmail)
+		sendEmail("Payment Complete!", transactionCallback.Email + " completed their payment",
+			config.AdminEmail)
 
 
 	}
