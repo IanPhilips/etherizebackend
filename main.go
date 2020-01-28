@@ -529,10 +529,10 @@ func getFiatPayment(w http.ResponseWriter, r *http.Request) {
 	// Set your secret key: remember to change this to your live secret key in production
 	// See your keys here: https://dashboard.stripe.com/account/apikeys
 	// live key:
-	//stripe.Key = config.StripePrivate
+	stripe.Key = config.StripePrivate
 
 	// test key:
-	stripe.Key = "sk_test_fPVOpS8a0NQr7cJ1bF2GpKCw00C7ru06xe"
+	//stripe.Key = "sk_test_fPVOpS8a0NQr7cJ1bF2GpKCw00C7ru06xe"
 
 	log.Info().Msg("stripe callback url: " + currentCallbackHost.String() + fiatPaymentCallbackResource)
 
